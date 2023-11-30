@@ -1,18 +1,28 @@
+## Main bot
+# A lot of the handler code for speechsdk is copy/pasted from the
+# Azure documentation example for continuous recognition for compressed
+# audio, but reworked to use pydub instead. 
+
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, PicklePersistence
 from telegram.ext.filters import VOICE, Chat
 import logging
-from os import getenv
+from os import getenv, unlink
 from dotenv import load_dotenv
 import azure.cognitiveservices.speech as speechsdk
-from asyncio import sleep, get_event_loop
+from asyncio import sleep
 from pydub import AudioSegment
+from tempfile import NamedTemporaryFile
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+async def clean_file_async(context: ContextTypes.DEFAULT_TYPE):
+    job = context.job
+    job.data['file'].close()
+    unlink(job.data['file'].name)
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger = logging.getLogger('Recognizer')
     logger.info("Received voice message!")
@@ -21,11 +31,24 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await context.bot.send_message(chat_id=chat_id, text="Working on it!", 
                                          reply_to_message_id=voice_id)
     
+    def clean_file(file):
+        context.job_queue.run_once(clean_file_async, 60.0, {'file':file})
     new_file = await context.bot.get_file(update.message.voice.file_id)
+    ogg_file = NamedTemporaryFile(mode='wb', suffix='.oga', delete=False)
+    logger.debug(f"Created temporary oga at {ogg_file.name}")
+    ogg_file.close()
+    await new_file.download_to_drive(ogg_file.name)
+    ogg_seg = AudioSegment.from_ogg(ogg_file.name)
+    logger.debug(f"Imported ogg to pydub, deleting {ogg_file.name}")
+    clean_file(ogg_file)
+    wav_file = NamedTemporaryFile(mode='wb', suffix=".wav", delete=False)
+    logger.debug(f"Created temporary wav file at {wav_file.name} to transcribe")
+    ogg_seg.export(wav_file, format="wav")
+    wav_file.close()
     await status_msg.edit_text("Converted!")
     
     global speech_config
-    audio_config = speechsdk.audio.AudioConfig(filename=wav_path)
+    audio_config = speechsdk.audio.AudioConfig(filename=wav_file.name)
     speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
 
     done = False
@@ -72,6 +95,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.delete()
     await context.bot.send_message(chat_id=chat_id, text=transcription, 
                                     reply_to_message_id=voice_id)
+    logger.debug(f"Cleaning up, deleting {wav_file.name}")
+    clean_file(wav_file)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Forward me a voice message and I'll transcribe it!")
