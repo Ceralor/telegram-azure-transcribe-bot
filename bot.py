@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, PicklePersistence
-from telegram.ext.filters import VOICE
+from telegram.ext.filters import VOICE, Chat
 import logging
 from os import getenv
 from dotenv import load_dotenv
@@ -91,17 +91,30 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Forward me a voice message and I'll transcribe it!")
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="Forward me a voice message. It may take a few minutes to transcribe. I'll reply to the voice message with a new one containing the transcription, so you can go do something else while you're waiting.")
 
 if __name__ == '__main__':
+    lg = logging.getLogger('main')
     load_dotenv()
     global speech_config
     speech_config = speechsdk.SpeechConfig(subscription=getenv('SPEECH_KEY'), region=getenv('SPEECH_REGION'))
     pers = PicklePersistence(filepath='bot.pickle')
     bot_token = getenv('TELEGRAM_BOT_TOKEN')
-    application = ApplicationBuilder().token(bot_token).persistence(persistence=pers).build()
+    application = ApplicationBuilder().token(bot_token)
+    application = application.persistence(persistence=pers)
+    application = application.build()
     start_handler = CommandHandler('start', start)
-    voice_handler = MessageHandler(VOICE, handle_voice)
+    help_handler = CommandHandler('help', help)
+    voice_handler = MessageHandler(VOICE, handle_voice, block=True)
+    if getenv('TELEGRAM_BOT_ALLOWED_CHAT_IDS'):
+        chat_ids = [int(x) for x in getenv('TELEGRAM_BOT_ALLOWED_CHAT_IDS').split(',')]
+        lg.info(f"Restricting to these chats: {chat_ids}")
+        start_handler.filters = Chat(chat_id=chat_ids)
+        help_handler.filters = Chat(chat_id=chat_ids)
+        voice_handler.filters = VOICE & Chat(chat_id=chat_ids)
     application.add_handler(start_handler)
+    application.add_handler(help_handler)
     application.add_handler(voice_handler)
     
     application.run_polling()
