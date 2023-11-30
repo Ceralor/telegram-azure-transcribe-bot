@@ -10,7 +10,8 @@ from telegram.ext.filters import VOICE, Chat
 import logging
 from os import getenv, unlink
 from dotenv import load_dotenv
-import azure.cognitiveservices.speech as speechsdk
+from azure.cognitiveservices.speech import SpeechConfig, SpeechRecognizer
+from azure.cognitiveservices.speech.audio import AudioConfig
 from asyncio import sleep
 from pydub import AudioSegment
 from tempfile import NamedTemporaryFile
@@ -28,9 +29,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Received voice message!")
     chat_id = update.effective_chat.id
     voice_id = update.message.id
-    status_msg = await context.bot.send_message(chat_id=chat_id, text="Working on it!", 
-                                         reply_to_message_id=voice_id)
-    
+    status_msg = await context.bot.send_message(
+        chat_id=chat_id,
+        text="Working on it!",
+        reply_to_message_id=voice_id
+    )
     def clean_file(file):
         context.job_queue.run_once(clean_file_async, 60.0, {'file':file})
     new_file = await context.bot.get_file(update.message.voice.file_id)
@@ -48,9 +51,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text("Converted!")
     
     global speech_config
-    audio_config = speechsdk.audio.AudioConfig(filename=wav_file.name)
-    speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
-
+    audio_config = AudioConfig(filename=wav_file.name)
+    speech_recognizer = SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
     done = False
     transcription = ""
     ### 
@@ -93,8 +95,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await sleep(5)
     speech_recognizer.stop_continuous_recognition_async()
     await status_msg.delete()
-    await context.bot.send_message(chat_id=chat_id, text=transcription, 
-                                    reply_to_message_id=voice_id)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=transcription,
+        reply_to_message_id=voice_id
+    )
     logger.debug(f"Cleaning up, deleting {wav_file.name}")
     clean_file(wav_file)
 
@@ -107,7 +112,7 @@ if __name__ == '__main__':
     lg = logging.getLogger('main')
     load_dotenv()
     global speech_config
-    speech_config = speechsdk.SpeechConfig(subscription=getenv('SPEECH_KEY'), region=getenv('SPEECH_REGION'))
+    speech_config = SpeechConfig(subscription=getenv('SPEECH_KEY'), region=getenv('SPEECH_REGION'))
     pers = PicklePersistence(filepath='bot.pickle')
     bot_token = getenv('TELEGRAM_BOT_TOKEN')
     application = ApplicationBuilder().token(bot_token)
