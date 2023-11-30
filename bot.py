@@ -18,29 +18,27 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Received voice message!")
     chat_id = update.effective_chat.id
     voice_id = update.message.id
-    msg = await context.bot.send_message(chat_id=chat_id, text="Working on it!", 
+    status_msg = await context.bot.send_message(chat_id=chat_id, text="Working on it!", 
                                          reply_to_message_id=voice_id)
     
     new_file = await context.bot.get_file(update.message.voice.file_id)
-    path = await new_file.download_to_drive()
-    ogg_path = str(path)
-    wav_path = str(path) + ".wav"
-    ogg_seg = AudioSegment.from_ogg(ogg_path)
-    ogg_seg.export(wav_path, format="wav")
-    await msg.edit_text("Converted!")
+    await status_msg.edit_text("Converted!")
     
     global speech_config
     audio_config = speechsdk.audio.AudioConfig(filename=wav_path)
     speech_recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
 
     done = False
-    current_message = ""
-    def stop_cb(evt):
-        """callback that signals to stop continuous recognition upon receiving an event `evt`"""
-        logger.debug('CLOSING on {}'.format(evt))
-        nonlocal done
-        done = True
+    transcription = ""
+    ### 
+    # Commented code here is intended for whenever I figure out how
+    # best to run async calls (send message/edit/delete) from a
+    # synchronous function call, nested inside an async function.
+    # Azure speech won't call functions async even when doing 'async
+    #  recognition', annoyingly.
+    ###
     # async def update_message_async(evt, current_message=current_message):
+    #     """Takes event from Azure and updates a message object to show realtime transcribing"""
     #     logger.info(f"Async Message: {evt.result.text}")
     #     if not current_message:
     #         current_message = await context.bot.send_message(chat_id=chat_id, 
@@ -48,46 +46,32 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     #                                                    reply_to_message_id=voice_id)
     #     else:
     #         await current_message.edit_text(evt.result.text)
-    # def update_message(evt):
-    #     logger.info(f"Message: {evt.result.text}")
-    #     loop = get_event_loop()
-    #     loop.create_task(update_message_async(evt, current_message))
-    #     loop.run_until_complete()
+    def stop_cb(evt):
+        """callback that signals to stop continuous recognition upon receiving an event `evt`"""
+        logger.debug('CLOSING on {}'.format(evt))
+        nonlocal done
+        done = True
     def finish_message(evt):
-        # previous_message_id = current_message.id
-        # loop = get_event_loop()
-        # loop.create_task(current_message.edit_text(evt.result.text))
-        # current_message = None
-        # loop.run_until_complete()
-        nonlocal current_message
-        current_message += evt.result.text + " "
-    # def start_session(evt):
-    #     loop = get_event_loop()
-    #     loop.create_task()
-    #     loop.run_until_complete()
-    # def finish_session(evt):
-    #     loop = get_event_loop()
-    #     loop.create_task(msg.delete())
-    #     loop.run_until_complete()
-    # Connect callbacks to the events fired by the speech recognizer
-    #speech_recognizer.recognizing.connect(update_message)
+        nonlocal transcription
+        transcription += evt.result.text + " "
     speech_recognizer.recognized.connect(finish_message)
-    #speech_recognizer.session_started.connect(start_session)
-    #speech_recognizer.session_stopped.connect(finish_session)
-    # speech_recognizer.canceled.connect(lambda evt: logger.info('CANCELED {}'.format(evt)))
     # stop continuous recognition on either session stopped or canceled events
     speech_recognizer.session_stopped.connect(stop_cb)
-    #speech_recognizer.canceled.connect(stop_cb)
+    speech_recognizer.canceled.connect(stop_cb)
 
     # Start continuous speech recognition
     speech_recognizer.start_continuous_recognition_async()
-    await msg.edit_text('Recognizing...')
+    if update.message.voice.duration > 120:
+        await status_msg.edit_text("Recognizing. Due to audio length, this could take a few minutes. Please be patient. You'll get notified when it's completed.")
+    else:
+        await status_msg.edit_text('Recognizing...')
     while not done:
         await context.bot.send_chat_action(chat_id=chat_id,action=ChatAction.TYPING)
-        await sleep(2)
+        await sleep(5)
     speech_recognizer.stop_continuous_recognition_async()
-    await msg.edit_text(current_message)
-
+    await status_msg.delete()
+    await context.bot.send_message(chat_id=chat_id, text=transcription, 
+                                    reply_to_message_id=voice_id)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Forward me a voice message and I'll transcribe it!")
