@@ -29,7 +29,7 @@ Clone the repository, then use `docker build . -t <insert-local-image-name>
 
 Either create a `.env` file with the required variables (below) or supply via `-e LOG_LEVEL=WARN` in the command line.
 
-`docker run --restart unless-stopped --env-file .env ghcr.io/ceralor/telegram-azure-transcribe-bot:latest`
+`docker run --restart unless-stopped --env-file .env --detach ghcr.io/ceralor/telegram-azure-transcribe-bot:latest`
 
 ## Running bare or building
 
