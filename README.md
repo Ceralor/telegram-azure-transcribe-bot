@@ -4,6 +4,8 @@ Simple Telegram bot to transcribe voice messages sent to it via Azure speech-to-
 
 ## Configure
 
+You'll need a free (or paid) Azure account with a Speech Services resource. You can visit the [Azure Speech Services page](https://azure.microsoft.com/en-us/products/ai-services/ai-speech) to get started. Make sure to select Free Plan when creating the resource and NOT the pay-as-you-go option.
+
 Configure .env file with the following:
  - TELEGRAM_BOT_TOKEN: Token provided by botfather
  - TELEGRAM_BOT_ALLOWED_CHAT_IDS: optional comma-separated list of chat IDs that may use this bot
