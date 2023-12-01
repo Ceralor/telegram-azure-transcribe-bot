@@ -17,3 +17,4 @@ Configure .env file with the following:
  - TELEGRAM_BOT_ALLOWED_CHAT_IDS: optional comma-separated list of chat IDs that may use this bot
  - SPEECH_KEY: speech key from Azure speech service
  - SPEECH_REGION: region from Azure speech servce
+ - LOG_LEVEL: optional, use strings from Python 'logging' such as INFO, WARN, DEBUG, ERROR

@@ -8,7 +8,7 @@ from telegram.constants import ChatAction
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, PicklePersistence
 from telegram.ext.filters import VOICE, Chat
 import logging
-from os import getenv, unlink
+from os import unlink, environ
 from dotenv import load_dotenv
 from azure.cognitiveservices.speech import SpeechConfig, SpeechRecognizer
 from azure.cognitiveservices.speech.audio import AudioConfig
@@ -16,10 +16,6 @@ from asyncio import sleep
 from pydub import AudioSegment
 from tempfile import NamedTemporaryFile
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
 async def clean_file_async(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     job.data['file'].close()
@@ -109,20 +105,25 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Forward me a voice message. It may take a few minutes to transcribe. I'll reply to the voice message with a new one containing the transcription, so you can go do something else while you're waiting.")
 
 if __name__ == '__main__':
-    lg = logging.getLogger('main')
     load_dotenv()
+
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=environ.get('LOG_LEVEL','WARN')
+    )
+    lg = logging.getLogger('main')
     global speech_config
-    speech_config = SpeechConfig(subscription=getenv('SPEECH_KEY'), region=getenv('SPEECH_REGION'))
+    speech_config = SpeechConfig(subscription=environ.get('SPEECH_KEY'), region=environ.get('SPEECH_REGION'))
     pers = PicklePersistence(filepath='bot.pickle')
-    bot_token = getenv('TELEGRAM_BOT_TOKEN')
+    bot_token = environ.get('TELEGRAM_BOT_TOKEN')
     application = ApplicationBuilder().token(bot_token)
     application = application.persistence(persistence=pers)
     application = application.build()
     start_handler = CommandHandler('start', start)
     help_handler = CommandHandler('help', help)
     voice_handler = MessageHandler(VOICE, handle_voice, block=True)
-    if getenv('TELEGRAM_BOT_ALLOWED_CHAT_IDS'):
-        chat_ids = [int(x) for x in getenv('TELEGRAM_BOT_ALLOWED_CHAT_IDS').split(',')]
+    if environ.get('TELEGRAM_BOT_ALLOWED_CHAT_IDS'):
+        chat_ids = [int(x) for x in environ.get('TELEGRAM_BOT_ALLOWED_CHAT_IDS').split(',')]
         lg.info(f"Restricting to these chats: {chat_ids}")
         start_handler.filters = Chat(chat_id=chat_ids)
         help_handler.filters = Chat(chat_id=chat_ids)
